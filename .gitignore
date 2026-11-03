@@ -1,0 +1,12 @@
+# Composer
+/vendor/
+composer.lock
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local artefacts
+*.log
+.phpunit.result.cache
