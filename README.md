@@ -54,7 +54,27 @@ http_response_code(200);
 ```
 
 Also available: `createIntent([...])`, `retrieveIntent($id)`,
-`attachReference($id, $reference)` and `Client::formatAmount($value)`.
+`attachReference($id, $reference)`, `listNotesForms([...])`,
+`retrieveNotesForm($id)` and `Client::formatAmount($value)`.
+
+### Checkout questions (notes forms)
+
+A notes form is a reusable set of questions built in the dashboard
+(Payments → Notes Forms). Pass its id and the hosted checkout asks them; the
+buyer's answers come back on the intent.
+
+```php
+$forms  = $esaalat->listNotesForms(['search' => 'delivery']);
+$intent = $esaalat->createIntent([
+    'wallet'    => $walletId,
+    'amount'    => 5000,
+    'notesForm' => $forms['results'][0]['id'],
+]);
+
+$current = $esaalat->retrieveIntent($intent['id']);
+$current['notes_form'];     // ['id', 'name', 'description'] or null
+$current['notes_answers'];  // [['id' => 'field_1', 'label' => …, 'type' => …, 'value' => …]]
+```
 
 ## What it handles for you
 

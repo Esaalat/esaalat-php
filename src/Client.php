@@ -117,7 +117,7 @@ final class Client
      * `session_token` from the response.
      *
      * @param array<string, mixed> $input amount, items, currency, orderId,
-     *        wallet, notes, showTestingWallet, idempotencyKey
+     *        wallet, notes, notesForm, showTestingWallet, idempotencyKey
      * @return array<string, mixed>
      */
     public function createSession(array $input): array
@@ -131,6 +131,9 @@ final class Client
             'external_order_id' => $input['orderId'] ?? $input['external_order_id'] ?? null,
             'wallet' => $input['wallet'] ?? null,
             'notes' => $input['notes'] ?? null,
+            // A form id from listNotesForms(): the buyer answers its questions
+            // at checkout, and the answers come back on the intent.
+            'notes_form' => $input['notesForm'] ?? $input['notes_form'] ?? null,
             'show_testing_wallet' => $input['showTestingWallet'] ?? $input['show_testing_wallet'] ?? null,
         ]);
 
@@ -146,7 +149,7 @@ final class Client
      * Create a payment intent (server-driven orders: marketplaces, Shopify).
      *
      * @param array<string, mixed> $input wallet, amount, items, currency,
-     *        orderId, notes, idempotencyKey
+     *        orderId, notes, notesForm, idempotencyKey
      * @return array<string, mixed>
      */
     public function createIntent(array $input): array
@@ -160,6 +163,9 @@ final class Client
             'currency' => $input['currency'] ?? null,
             'external_order_id' => $input['orderId'] ?? $input['external_order_id'] ?? null,
             'notes' => $input['notes'] ?? null,
+            // A form id from listNotesForms(): the buyer answers its questions
+            // on the checkout page and the answers come back on the intent.
+            'notes_form' => $input['notesForm'] ?? $input['notes_form'] ?? null,
         ]);
 
         return $this->request(
@@ -174,6 +180,36 @@ final class Client
     public function retrieveIntent(string $intentId): array
     {
         return $this->request('GET', '/merchant/intents/' . rawurlencode($intentId) . '/');
+    }
+
+    /**
+     * The account's reusable checkout questions (paginated, read-only).
+     *
+     * Forms are authored in the dashboard (Payments → Notes Forms); this is
+     * how a server finds the id to send as `notesForm` on createIntent.
+     *
+     * @param array<string, mixed> $query search, page, page_size
+     * @return array<string, mixed>
+     */
+    public function listNotesForms(array $query = []): array
+    {
+        $params = array_filter(
+            [
+                'search' => $query['search'] ?? null,
+                'page' => $query['page'] ?? null,
+                'page_size' => $query['pageSize'] ?? $query['page_size'] ?? null,
+            ],
+            static fn ($value): bool => $value !== null && $value !== ''
+        );
+        $suffix = $params === [] ? '' : '?' . http_build_query($params);
+
+        return $this->request('GET', '/merchant/notes-forms/' . $suffix);
+    }
+
+    /** @return array<string, mixed> */
+    public function retrieveNotesForm(string $formId): array
+    {
+        return $this->request('GET', '/merchant/notes-forms/' . rawurlencode($formId) . '/');
     }
 
     /** @return array<string, mixed> */

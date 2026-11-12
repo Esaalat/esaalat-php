@@ -68,6 +68,20 @@ $client->createSession(['orderId' => 'order-124', 'amount' => 6000]);
 $tokenCalls = array_values(array_filter($calls, static fn (array $call): bool => str_ends_with($call['url'], '/merchant/token')));
 check('token cached across calls', count($tokenCalls) === 1);
 
+$client->createIntent(['wallet' => 'wallet-1', 'amount' => 5000, 'notesForm' => 'form-1']);
+$intentCreate = array_values(array_filter($calls, static fn (array $call): bool => str_contains($call['url'], '/merchant/intents/')));
+check(
+    'notes form sent on create',
+    (json_decode((string) $intentCreate[0]['body'], true)['notes_form'] ?? null) === 'form-1'
+);
+
+$client->listNotesForms(['search' => 'delivery details', 'pageSize' => 50]);
+$formCalls = array_values(array_filter($calls, static fn (array $call): bool => str_contains($call['url'], '/merchant/notes-forms/?')));
+check(
+    'forms listed with query',
+    str_ends_with($formCalls[0]['url'], '/merchant/notes-forms/?search=delivery+details&page_size=50')
+);
+
 $body = json_encode(['event' => 'payment.verified', 'intent_id' => 'i1']);
 $timestamp = time();
 $signature = 't=' . $timestamp . ',v1=' . hash_hmac('sha256', $timestamp . '.' . $body, 'whsec_test');
