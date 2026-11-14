@@ -55,7 +55,8 @@ http_response_code(200);
 
 Also available: `createIntent([...])`, `retrieveIntent($id)`,
 `attachReference($id, $reference)`, `listNotesForms([...])`,
-`retrieveNotesForm($id)` and `Client::formatAmount($value)`.
+`retrieveNotesForm($id)`, `listPayees()`, `createPayee()`, `retrievePayee()`,
+`updatePayee()`, `deletePayee()` and `Client::formatAmount($value)`.
 
 ### Checkout questions (notes forms)
 
@@ -75,6 +76,48 @@ $current = $esaalat->retrieveIntent($intent['id']);
 $current['notes_form'];     // ['id', 'name', 'description'] or null
 $current['notes_answers'];  // [['id' => 'field_1', 'label' => …, 'type' => …, 'value' => …]]
 ```
+
+### Payees and payout wallets
+
+A payee is the person inside your account who earns from a payment. Create
+them with **your own id** and their payout wallets; then pass that id as
+`payee` when creating the payment. The external id is immutable after
+creation, and wallets are payee metadata — not Esaalat receiving wallets.
+
+```php
+$payee = $esaalat->createPayee([
+    'externalId' => 'user-42',
+    'name'       => 'Ahmed Ali',
+    'wallets'    => [
+        ['provider' => 'KURAIMI', 'accountNumber' => '771234567', 'name' => 'Main'],
+    ],
+]);
+
+$intent = $esaalat->createIntent([
+    'wallet' => $walletId,
+    'amount' => 5000,
+    'payee'  => $payee['external_id'],
+]);
+```
+
+`createPayee()` is an **upsert**: posting the same external id updates that
+payee and returns it, so a platform can safely sync its people. The rest of
+the surface is ordinary CRUD:
+
+```php
+$page = $esaalat->listPayees(['search' => 'Ahmed', 'pageSize' => 50]);
+$one  = $esaalat->retrievePayee('user-42');
+$updated = $esaalat->updatePayee('user-42', [
+    'wallets' => [['provider' => 'JAIB', 'accountNumber' => '770000000']],
+]);
+$removed = $esaalat->deletePayee('user-42');
+// ['deleted' => false, 'deactivated' => true] when payments or withdrawals
+// already reference the payee; ['deleted' => true] when it had no history.
+```
+
+Providers are the enum Esaalat supports (for example `KURAIMI`, `JAIB`,
+`ONE_CASH`); `TEST` is not a payout destination. Duplicate
+provider/account-number pairs are rejected.
 
 ## What it handles for you
 

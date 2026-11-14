@@ -134,6 +134,7 @@ final class Client
             // A form id from listNotesForms(): the buyer answers its questions
             // at checkout, and the answers come back on the intent.
             'notes_form' => $input['notesForm'] ?? $input['notes_form'] ?? null,
+            'payee' => $input['payee'] ?? null,
             'show_testing_wallet' => $input['showTestingWallet'] ?? $input['show_testing_wallet'] ?? null,
         ]);
 
@@ -166,6 +167,7 @@ final class Client
             // A form id from listNotesForms(): the buyer answers its questions
             // on the checkout page and the answers come back on the intent.
             'notes_form' => $input['notesForm'] ?? $input['notes_form'] ?? null,
+            'payee' => $input['payee'] ?? null,
         ]);
 
         return $this->request(
@@ -210,6 +212,120 @@ final class Client
     public function retrieveNotesForm(string $formId): array
     {
         return $this->request('GET', '/merchant/notes-forms/' . rawurlencode($formId) . '/');
+    }
+
+    /**
+     * The account's payees, paginated. `search` matches name, external id and
+     * code; use `page` / `pageSize` for large lists.
+     *
+     * @param array<string, mixed> $query search, page, pageSize/page_size
+     * @return array<string, mixed>
+     */
+    public function listPayees(array $query = []): array
+    {
+        $params = array_filter(
+            [
+                'search' => $query['search'] ?? null,
+                'page' => $query['page'] ?? null,
+                'page_size' => $query['pageSize'] ?? $query['page_size'] ?? null,
+            ],
+            static fn ($value): bool => $value !== null && $value !== ''
+        );
+        $suffix = $params === [] ? '' : '?' . http_build_query($params);
+
+        return $this->request('GET', '/merchant/payees/' . $suffix);
+    }
+
+    /**
+     * Create a payee, or update the one with the same external id.
+     *
+     * The external id is your platform's own id for the person. It is unique
+     * within the account, required, and immutable after creation. `wallets`
+     * are payout destinations (`provider`, `accountNumber`/`account_number`,
+     * optional `name`) — not Esaalat receiving wallets.
+     *
+     * @param array<string, mixed> $input externalId/external_id, name, wallets,
+     *        isActive/is_active
+     * @return array<string, mixed>
+     */
+    public function createPayee(array $input): array
+    {
+        $externalId = trim((string) ($input['externalId'] ?? $input['external_id'] ?? ''));
+        if ($externalId === '') {
+            throw new EsaalatException('externalId is required.', 'configuration');
+        }
+
+        $body = $this->prune([
+            'external_id' => $externalId,
+            'name' => $input['name'] ?? null,
+            'wallets' => isset($input['wallets'])
+                ? $this->normalizePayeeWallets($input['wallets'])
+                : null,
+            'is_active' => $input['isActive'] ?? $input['is_active'] ?? null,
+        ]);
+
+        return $this->request('POST', '/merchant/payees/', $body);
+    }
+
+    /** @return array<string, mixed> */
+    public function retrievePayee(string $externalId): array
+    {
+        return $this->request('GET', '/merchant/payees/' . rawurlencode($externalId) . '/');
+    }
+
+    /**
+     * Update a payee's name, payout wallets or active state. The external id
+     * cannot be changed; pass it only in the first argument.
+     *
+     * @param array<string, mixed> $input name, wallets, isActive/is_active
+     * @return array<string, mixed>
+     */
+    public function updatePayee(string $externalId, array $input): array
+    {
+        $requestedId = $input['externalId'] ?? $input['external_id'] ?? null;
+        if ($requestedId !== null && (string) $requestedId !== $externalId) {
+            throw new EsaalatException(
+                'A payee external id cannot be changed after creation.',
+                'configuration'
+            );
+        }
+
+        $body = $this->prune([
+            'name' => $input['name'] ?? null,
+            'wallets' => isset($input['wallets'])
+                ? $this->normalizePayeeWallets($input['wallets'])
+                : null,
+            'is_active' => $input['isActive'] ?? $input['is_active'] ?? null,
+        ]);
+
+        return $this->request(
+            'PATCH',
+            '/merchant/payees/' . rawurlencode($externalId) . '/',
+            $body
+        );
+    }
+
+    /**
+     * Remove a payee. A payee with payment history is deactivated instead of
+     * hard-deleted, so its ledger stays intact.
+     *
+     * @return array{deleted: bool, deactivated: bool, id?: string|null}
+     */
+    public function deletePayee(string $externalId): array
+    {
+        $result = $this->request(
+            'DELETE',
+            '/merchant/payees/' . rawurlencode($externalId) . '/'
+        );
+        if (($result['deactivated'] ?? false) === true) {
+            return [
+                'deleted' => false,
+                'deactivated' => true,
+                'id' => $result['id'] ?? null,
+            ];
+        }
+
+        return ['deleted' => true, 'deactivated' => false];
     }
 
     /** @return array<string, mixed> */
@@ -607,6 +723,24 @@ final class Client
             'price' => isset($item['price']) ? self::formatAmount($item['price']) : null,
             'quantity' => $item['quantity'] ?? null,
         ]);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $wallets
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizePayeeWallets(array $wallets): array
+    {
+        return array_map(
+            fn (array $wallet): array => $this->prune([
+                'provider' => $wallet['provider'] ?? null,
+                'account_number' => $wallet['accountNumber']
+                    ?? $wallet['account_number']
+                    ?? null,
+                'name' => $wallet['name'] ?? null,
+            ]),
+            $wallets
+        );
     }
 
     /**
